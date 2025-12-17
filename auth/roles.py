@@ -6,9 +6,16 @@ from typing import Iterable, Set
 
 
 class Role(str, Enum):
-    viewer = "viewer"
-    operator = "operator"
-    admin = "admin"
+    ops = "Ops"
+    manager = "Manager"
+    exec = "Exec"
+
+
+class Feature(str, Enum):
+    chatbot = "chatbot"
+    upload = "upload"
+    kpis = "kpis"
+    incidents = "incidents"
 
 
 class Permission(str, Enum):
@@ -18,24 +25,41 @@ class Permission(str, Enum):
     configure = "configure"
 
 
+_ROLE_FEATURES = {
+    Role.ops: {Feature.chatbot, Feature.upload, Feature.kpis, Feature.incidents},
+    Role.manager: {Feature.chatbot, Feature.upload, Feature.kpis, Feature.incidents},
+    Role.exec: {Feature.chatbot, Feature.kpis, Feature.incidents},
+}
+
+
 _ROLE_PERMISSIONS = {
-    Role.viewer: {Permission.view},
-    Role.operator: {Permission.view, Permission.upload, Permission.manage_incidents},
-    Role.admin: {
-        Permission.view,
-        Permission.upload,
-        Permission.manage_incidents,
-        Permission.configure,
-    },
+    Role.ops: {Permission.view, Permission.upload, Permission.manage_incidents},
+    Role.manager: {Permission.view, Permission.upload, Permission.manage_incidents, Permission.configure},
+    Role.exec: {Permission.view},
 }
 
 
 def get_current_role() -> Role:
-    raw = (os.getenv("EDI_ROLE", Role.viewer.value) or Role.viewer.value).strip().lower()
+    """
+    Current business role for this session.
+
+    This is set by the Streamlit sidebar selector in app.py via CONTROL_TOWER_ROLE.
+    """
+    raw = (os.getenv("CONTROL_TOWER_ROLE", Role.ops.value) or Role.ops.value).strip()
     try:
         return Role(raw)
     except ValueError:
-        return Role.viewer
+        return Role.ops
+
+
+def features_for(role: Role) -> Set[Feature]:
+    return set(_ROLE_FEATURES.get(role, set()))
+
+
+def can_access(feature: Feature, role: Role | None = None) -> bool:
+    if role is None:
+        role = get_current_role()
+    return feature in features_for(role)
 
 
 def permissions_for(role: Role) -> Set[Permission]:

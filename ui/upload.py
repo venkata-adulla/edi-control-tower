@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import streamlit as st
 
-from auth.roles import Permission, has_permission
+from auth.roles import Feature, can_access, get_current_role
 from api.n8n_client import N8NClient
 
 
@@ -48,7 +48,7 @@ def _is_done(status_resp: Dict[str, Any]) -> bool:
 def render() -> None:
     st.title("File upload")
 
-    if not has_permission(Permission.upload):
+    if not can_access(Feature.upload, get_current_role()):
         st.info("Your role does not allow uploads.")
         return
 
