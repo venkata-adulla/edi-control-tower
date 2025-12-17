@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     psycopg = None  # type: ignore[assignment]
 
-_FALLBACK_PARTNERS = ["ACME", "Globex", "Initech", "Umbrella"]
+_FALLBACK_PARTNERS = ["Amazon NA", "Walmart US", "FedEx Ground", "UPS Supply Chain"]
 
 
 def _pg_settings() -> Dict[str, Any]:
