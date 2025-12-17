@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
@@ -11,7 +12,68 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     px = None  # type: ignore[assignment]
 
-_DEFAULT_PARTNERS = ["ACME", "Globex", "Initech", "Umbrella"]
+try:
+    import psycopg
+except ModuleNotFoundError:  # pragma: no cover
+    psycopg = None  # type: ignore[assignment]
+
+_FALLBACK_PARTNERS = ["ACME", "Globex", "Initech", "Umbrella"]
+
+
+def _pg_settings() -> Dict[str, Any]:
+    """
+    Postgres connection settings for fetching trading partners.
+
+    Uses environment variables so credentials are not hard-coded:
+    - CONTROL_TOWER_PG_HOST
+    - CONTROL_TOWER_PG_PORT
+    - CONTROL_TOWER_PG_DB
+    - CONTROL_TOWER_PG_USER
+    - CONTROL_TOWER_PG_PASSWORD
+    - CONTROL_TOWER_PG_SSLMODE (default: require)
+    """
+    return {
+        "host": os.getenv("CONTROL_TOWER_PG_HOST", "aws-1-ap-south-1.pooler.supabase.com"),
+        "port": int(os.getenv("CONTROL_TOWER_PG_PORT", "5432")),
+        "dbname": os.getenv("CONTROL_TOWER_PG_DB", "postgres"),
+        "user": os.getenv("CONTROL_TOWER_PG_USER", "postgres.qzyvkjcgfyltezraiqwh"),
+        "password": os.getenv("CONTROL_TOWER_PG_PASSWORD"),
+        "sslmode": os.getenv("CONTROL_TOWER_PG_SSLMODE", "require"),
+    }
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_partners_from_postgres() -> List[str]:
+    if psycopg is None:
+        raise ModuleNotFoundError("psycopg is not installed")
+
+    cfg = _pg_settings()
+    if not cfg.get("password"):
+        raise ValueError("Missing CONTROL_TOWER_PG_PASSWORD")
+
+    query = "SELECT tp_name FROM trading_partners WHERE tp_name IS NOT NULL ORDER BY tp_name"
+    partners: List[str] = []
+
+    # psycopg.connect supports keyword args (host, port, dbname, user, password, sslmode)
+    with psycopg.connect(connect_timeout=8, **cfg) as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            for (tp_name,) in cur.fetchall():
+                if tp_name is None:
+                    continue
+                name = str(tp_name).strip()
+                if name:
+                    partners.append(name)
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique: List[str] = []
+    for p in partners:
+        if p in seen:
+            continue
+        seen.add(p)
+        unique.append(p)
+    return unique
 
 
 def _demo_metrics(partner: str) -> Dict[str, Any]:
@@ -91,9 +153,18 @@ def render() -> None:
     left, right = st.columns([2, 1])
 
     with left:
+        # Prefer DB-backed trading partners, fall back to last known list or a small demo list.
+        partners: List[str] = st.session_state.get("partners", [])
+        if not partners:
+            try:
+                partners = _fetch_partners_from_postgres()
+                st.session_state["partners"] = partners
+            except Exception:
+                partners = _FALLBACK_PARTNERS
+
         partner = st.selectbox(
             "Partner",
-            options=st.session_state.get("partners", _DEFAULT_PARTNERS),
+            options=partners,
             index=0,
             key="kpi_partner",
         )
@@ -102,6 +173,15 @@ def render() -> None:
         use_demo = st.toggle("Use demo data", value=False, help="Use local demo metrics (no n8n call).")
         if st.button("Refresh", use_container_width=True):
             _fetch_metrics.clear()
+            _fetch_partners_from_postgres.clear()
+
+    with st.expander("Trading partner source", expanded=False):
+        cfg = _pg_settings()
+        is_configured = bool(cfg.get("password")) and psycopg is not None
+        st.write("Postgres-backed list" if is_configured else "Fallback list (configure Postgres to enable)")
+        st.caption(
+            "To enable Postgres-backed partners, set CONTROL_TOWER_PG_PASSWORD (and optionally host/user/db)."
+        )
 
     metrics: Optional[Dict[str, Any]] = None
     if use_demo:
