@@ -26,9 +26,9 @@ class Permission(str, Enum):
 
 
 _ROLE_FEATURES = {
-    Role.ops: {Feature.chatbot, Feature.upload, Feature.kpis, Feature.incidents},
-    Role.manager: {Feature.chatbot, Feature.upload, Feature.kpis, Feature.incidents},
-    Role.exec: {Feature.chatbot, Feature.kpis, Feature.incidents},
+    Role.ops: {Feature.chatbot, Feature.upload, Feature.incidents},
+    Role.manager: {Feature.chatbot, Feature.kpis, Feature.incidents},
+    Role.exec: {Feature.chatbot, Feature.kpis},
 }
 
 
