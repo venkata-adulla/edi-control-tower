@@ -1,60 +1,69 @@
 from __future__ import annotations
 
-import os
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
 from api.n8n_client import N8NClient
 
 
-def _ensure_messages() -> None:
-    st.session_state.setdefault(
-        "chat_messages",
-        [
+ChatMessage = Dict[str, str]
+
+
+def _init_chat_state() -> None:
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = [
             {
                 "role": "assistant",
-                "content": "Ask me about uploads, incidents, or overall status.",
+                "content": "Ask me about documents, shipments, SLAs, KPIs, or incidents.",
             }
-        ],
-    )
+        ]
+
+
+def _extract_answer(payload: Dict[str, Any]) -> str:
+    """
+    Normalize n8n webhook responses to a string.
+    We accept common patterns like {"answer": "..."} or {"text": "..."}.
+    """
+    for key in ("answer", "response", "message", "text"):
+        val = payload.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return str(payload)
 
 
 def render() -> None:
     st.title("Chatbot")
+    st.caption("Ask natural-language questions. Responses are generated via n8n workflows.")
 
-    _ensure_messages()
+    _init_chat_state()
 
-    for m in st.session_state.chat_messages:
+    messages: List[ChatMessage] = st.session_state.chat_messages
+    for m in messages:
         with st.chat_message(m["role"]):
             st.write(m["content"])
 
-    prompt = st.chat_input("Type a message")
+    prompt: Optional[str] = st.chat_input("Ask a question")
     if not prompt:
         return
 
-    st.session_state.chat_messages.append({"role": "user", "content": prompt})
+    prompt = prompt.strip()
+    if not prompt:
+        return
+
+    messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
 
-    webhook = os.getenv("N8N_CHAT_WEBHOOK_URL")
-
     with st.chat_message("assistant"):
-        if webhook:
-            try:
-                client = N8NClient()
-                resp = client.call_webhook(webhook, {"message": prompt})
-                answer = resp.get("answer") or resp.get("text") or str(resp)
-            except Exception as e:  # noqa: BLE001
-                answer = f"I couldn't reach n8n: {e}"
-        else:
-            uploads = len(st.session_state.get("uploaded_files", []))
-            incidents = len(st.session_state.get("incidents", []))
-            answer = (
-                "n8n chat webhook not configured. "
-                f"This session: {uploads} uploads, {incidents} incidents. "
-                "Set N8N_CHAT_WEBHOOK_URL to enable workflow-backed answers."
-            )
+        try:
+            client = N8NClient()
+            with st.spinner("Thinking..."):
+                resp = client.chat_query(prompt)
+            answer = _extract_answer(resp)
+        except Exception as e:  # noqa: BLE001
+            answer = f"Chat request failed: {e}"
 
         st.write(answer)
 
-    st.session_state.chat_messages.append({"role": "assistant", "content": answer})
+    messages.append({"role": "assistant", "content": answer})
