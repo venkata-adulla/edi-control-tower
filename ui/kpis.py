@@ -194,14 +194,6 @@ def render() -> None:
             _fetch_metrics.clear()
             _fetch_partners_from_postgres.clear()
 
-    with st.expander("Trading partner source", expanded=False):
-        cfg = _pg_settings()
-        is_configured = bool(cfg.get("password")) and psycopg is not None
-        st.write("Postgres-backed list" if is_configured else "Fallback list (configure Postgres to enable)")
-        st.caption(
-            "To enable Postgres-backed partners, set CONTROL_TOWER_PG_PASSWORD (and optionally host/user/db)."
-        )
-
     metrics: Optional[Dict[str, Any]] = None
     if use_demo:
         metrics = _demo_metrics(partner)
