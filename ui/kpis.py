@@ -32,13 +32,21 @@ def _pg_settings() -> Dict[str, Any]:
     - CONTROL_TOWER_PG_PASSWORD
     - CONTROL_TOWER_PG_SSLMODE (default: require)
     """
+    sslmode_raw = (os.getenv("CONTROL_TOWER_PG_SSLMODE", "require") or "require").strip()
+    sslmode = sslmode_raw.lower()
+    # Normalize common variants (e.g., "Disable", "disabled", "off")
+    if sslmode in {"disabled", "disable", "off", "false", "0", "no"}:
+        sslmode = "disable"
+    elif sslmode in {"require", "required", "on", "true", "1", "yes"}:
+        sslmode = "require"
+
     return {
         "host": os.getenv("CONTROL_TOWER_PG_HOST", "aws-1-ap-south-1.pooler.supabase.com"),
         "port": int(os.getenv("CONTROL_TOWER_PG_PORT", "5432")),
         "dbname": os.getenv("CONTROL_TOWER_PG_DB", "postgres"),
         "user": os.getenv("CONTROL_TOWER_PG_USER", "postgres.qzyvkjcgfyltezraiqwh"),
         "password": os.getenv("CONTROL_TOWER_PG_PASSWORD"),
-        "sslmode": os.getenv("CONTROL_TOWER_PG_SSLMODE", "require"),
+        "sslmode": sslmode,
     }
 
 
@@ -55,7 +63,18 @@ def _fetch_partners_from_postgres() -> List[str]:
     partners: List[str] = []
 
     # psycopg.connect supports keyword args (host, port, dbname, user, password, sslmode)
-    with psycopg.connect(connect_timeout=8, **cfg) as conn:
+    try:
+        conn_ctx = psycopg.connect(connect_timeout=8, **cfg)
+    except Exception as e:  # noqa: BLE001
+        # Supabase poolers typically require SSL; if user set disable, retry with require.
+        if str(cfg.get("sslmode", "")).lower() == "disable":
+            cfg_retry = dict(cfg)
+            cfg_retry["sslmode"] = "require"
+            conn_ctx = psycopg.connect(connect_timeout=8, **cfg_retry)
+        else:
+            raise e
+
+    with conn_ctx as conn:
         with conn.cursor() as cur:
             cur.execute(query)
             for (tp_name,) in cur.fetchall():
