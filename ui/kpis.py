@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-import plotly.express as px
 import streamlit as st
 
 from api.n8n_client import N8NClient
+
+try:
+    import plotly.express as px
+except ModuleNotFoundError:  # pragma: no cover
+    px = None  # type: ignore[assignment]
 
 _DEFAULT_PARTNERS = ["ACME", "Globex", "Initech", "Umbrella"]
 
@@ -77,6 +81,12 @@ def _fetch_metrics(partner: str) -> Dict[str, Any]:
 def render() -> None:
     st.title("KPI dashboard")
     st.caption("Partner-based operational metrics fetched via n8n webhooks.")
+
+    if px is None:
+        st.error("Plotly is not installed. Install it to view KPI charts.")
+        st.code("python -m pip install plotly", language="bash")
+        st.caption("Alternatively: `pip install -r requirements.txt`")
+        return
 
     left, right = st.columns([2, 1])
 
