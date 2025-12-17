@@ -6,7 +6,7 @@ from typing import Callable, Dict, List
 
 import streamlit as st
 
-from auth.roles import Feature, Role, can_access
+from auth.roles import Feature, Role, can_access, get_current_role
 from ui.chatbot import render as render_chatbot
 from ui.upload import render as render_upload
 from ui.kpis import render as render_kpis
@@ -20,16 +20,11 @@ class Page:
     feature: Feature
 
 
-def _get_selected_role() -> Role:
-    raw = st.session_state.get("selected_role", Role.ops.value)
-    try:
-        return Role(raw)
-    except ValueError:
-        return Role.ops
-
-
-def _set_role_env(selected: Role) -> None:
-    os.environ["CONTROL_TOWER_ROLE"] = selected.value
+def _set_role_env(selected_role_value: str) -> None:
+    """
+    Enforce role selection via auth/roles.py by writing CONTROL_TOWER_ROLE.
+    """
+    os.environ["CONTROL_TOWER_ROLE"] = selected_role_value
 
 
 def main() -> None:
@@ -37,15 +32,15 @@ def main() -> None:
 
     st.sidebar.title("AI EDI Control Tower")
 
-    selected_role = st.sidebar.selectbox(
+    selected_role_value = st.sidebar.selectbox(
         "Role",
         options=[r.value for r in Role],
         key="selected_role",
         help="Select a role to see role-based views (Ops / Manager / Exec).",
     )
-    role = _get_selected_role()
-    _set_role_env(role)
-    st.sidebar.caption(f"Viewing as: **{selected_role}**")
+    _set_role_env(selected_role_value)
+    role = get_current_role()
+    st.sidebar.caption(f"Viewing as: **{role.value}**")
 
     all_pages: List[Page] = [
         Page("KPI Dashboard", render_kpis, Feature.kpis),
@@ -54,7 +49,8 @@ def main() -> None:
         Page("Chatbot", render_chatbot, Feature.chatbot),
     ]
 
-    visible_pages = [p for p in all_pages if can_access(p.feature, role)]
+    # Role enforcement: which pages render is controlled solely by auth/roles.py.
+    visible_pages = [p for p in all_pages if can_access(p.feature)]
     pages_by_label: Dict[str, Callable[[], None]] = {p.label: p.render for p in visible_pages}
 
     st.title("AI EDI Control Tower")
