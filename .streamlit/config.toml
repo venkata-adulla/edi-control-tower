@@ -1,0 +1,9 @@
+[server]
+# Ensure changes in imported modules are detected reliably.
+# Helpful on WSL (/mnt/*) and network/mounted filesystems.
+fileWatcherType = "poll"
+runOnSave = true
+
+[browser]
+# Optional: reduces noisy auto-open behavior.
+gatherUsageStats = false
