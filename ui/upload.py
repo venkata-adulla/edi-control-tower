@@ -68,10 +68,10 @@ def _pg_settings() -> Dict[str, Any]:
         sslmode = "require"
 
     return {
-        "host": os.getenv("CONTROL_TOWER_PG_HOST"),
+        "host": os.getenv("CONTROL_TOWER_PG_HOST", "aws-1-ap-south-1.pooler.supabase.com"),
         "port": int(os.getenv("CONTROL_TOWER_PG_PORT", "5432")),
         "dbname": os.getenv("CONTROL_TOWER_PG_DB", "postgres"),
-        "user": os.getenv("CONTROL_TOWER_PG_USER"),
+        "user": os.getenv("CONTROL_TOWER_PG_USER", "postgres.qzyvkjcgfyltezraiqwh"),
         "password": os.getenv("CONTROL_TOWER_PG_PASSWORD"),
         "sslmode": sslmode,
     }
@@ -120,7 +120,13 @@ def _fetch_document_events(document_id: Any, limit: int = 500) -> List[Dict[str,
     Fetch events for a document_id from document_events.
     Assumes document_events has a document_id column; other columns are flexible.
     """
-    query = "SELECT * FROM document_events WHERE document_id = %s LIMIT %s"
+    query = """
+        SELECT *
+        FROM document_events
+        WHERE document_id = %s
+        ORDER BY event_time ASC
+        LIMIT %s
+    """
     with _pg_connect() as conn:
         with conn.cursor() as cur:
             cur.execute(query, (document_id, limit))
@@ -136,7 +142,8 @@ def _event_time_key(event: Dict[str, Any]) -> Any:
 
 
 def _infer_step_name(event: Dict[str, Any]) -> str:
-    for k in ("step", "step_name", "stage", "activity", "task", "event_type", "type"):
+    # document_events uses `stage` as the pipeline step name.
+    for k in ("stage", "step", "step_name", "activity", "task", "event_type", "type"):
         v = event.get(k)
         if isinstance(v, str) and v.strip():
             return v.strip()
@@ -146,6 +153,7 @@ def _infer_step_name(event: Dict[str, Any]) -> str:
 
 
 def _infer_status(event: Dict[str, Any]) -> str:
+    # document_events uses `status` (e.g., queued/processing/completed/failed).
     v = event.get("status") or event.get("state") or event.get("result")
     if isinstance(v, str) and v.strip():
         return v.strip().lower()
@@ -190,6 +198,9 @@ def _render_pipeline(latest_by_step: List[Tuple[str, Dict[str, Any]]]) -> None:
         cols[1].write(step)
         ts = _event_time_key(ev)
         cols[2].write(ts.isoformat() if hasattr(ts, "isoformat") else (str(ts) if ts else ""))
+        details = ev.get("details")
+        if isinstance(details, str) and details.strip():
+            st.caption(details.strip())
         if i < len(latest_by_step) - 1:
             st.write("│")
 
