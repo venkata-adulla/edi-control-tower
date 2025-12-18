@@ -73,8 +73,8 @@ def render() -> None:
     if right.button("Refresh", use_container_width=True):
         _fetch_incidents.clear()
 
-    severity = st.multiselect("Severity", options=["low", "medium", "high", "critical"], default=[])
-    status = st.multiselect("Status", options=["open", "monitoring", "resolved", "closed", "error"], default=[])
+    severity = st.multiselect("Severity", options=["LOW", "MEDIUM", "HIGH", "CRITICAL"], default=[])
+    status = st.multiselect("Status", options=["OPEN", "MONITORING", "RESOLVED"], default=[])
 
     filters: Dict[str, Any] = {
         "query": query.strip() if query else None,
