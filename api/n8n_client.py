@@ -13,7 +13,7 @@ class N8NWebhookConfig:
     Configuration for calling n8n webhooks.
 
     Notes:
-    - base_url should be the n8n root URL, e.g. http://localhost:5678
+    - base_url should be the n8n root URL, e.g. https://venkat-1194.app.n8n.cloud
     - webhook_* values are paths appended to base_url, e.g. /webhook/chat
     """
 
@@ -22,7 +22,6 @@ class N8NWebhookConfig:
     webhook_upload: str = "/webhook/upload"
     webhook_kpis: str = "/webhook/kpis"
     webhook_incidents: str = "/webhook/incidents"
-    webhook_status: str = "/webhook/status"
     webhook_tracker: str = "/webhook/tracker"
 
 
@@ -30,24 +29,22 @@ class N8NClient:
     """HTTP client for calling n8n webhooks (PoC backend surface).
 
     Environment variables:
-    - N8N_BASE_URL (default: http://localhost:5678)
+    - N8N_BASE_URL (default: https://venkat-1194.app.n8n.cloud)
     - N8N_WEBHOOK_CHAT (default: /webhook/chat)
     - N8N_WEBHOOK_UPLOAD (default: /webhook/upload)
     - N8N_WEBHOOK_KPIS (default: /webhook/kpis)
     - N8N_WEBHOOK_INCIDENTS (default: /webhook/incidents)
-    - N8N_WEBHOOK_STATUS (default: /webhook/status)
     - N8N_WEBHOOK_TRACKER (default: /webhook/tracker)
     """
 
     def __init__(self, config: Optional[N8NWebhookConfig] = None, timeout_s: int = 15):
         if config is None:
             config = N8NWebhookConfig(
-                base_url=(os.getenv("N8N_BASE_URL", "http://localhost:5678") or "").rstrip("/"),
+                base_url=(os.getenv("N8N_BASE_URL", "https://venkat-1194.app.n8n.cloud") or "").rstrip("/"),
                 webhook_chat=os.getenv("N8N_WEBHOOK_CHAT", "/webhook/chat"),
                 webhook_upload=os.getenv("N8N_WEBHOOK_UPLOAD", "/webhook/upload"),
                 webhook_kpis=os.getenv("N8N_WEBHOOK_KPIS", "/webhook/kpis"),
                 webhook_incidents=os.getenv("N8N_WEBHOOK_INCIDENTS", "/webhook/incidents"),
-                webhook_status=os.getenv("N8N_WEBHOOK_STATUS", "/webhook/status"),
                 webhook_tracker=os.getenv("N8N_WEBHOOK_TRACKER", "/webhook/tracker"),
             )
 
@@ -124,10 +121,6 @@ class N8NClient:
     def incident_list(self, *, filters: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
         """Fetches incident list/drill-down payloads via webhook."""
         return self._post_json(self._abs_url(self.config.webhook_incidents), dict(filters or {}))
-
-    def live_status(self) -> Dict[str, Any]:
-        """Fetches live status via webhook (preferred for PoC)."""
-        return self._post_json(self._abs_url(self.config.webhook_status), {})
 
     def document_tracker(self, *, filters: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
         """Fetches document tracking data via webhook."""
