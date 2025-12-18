@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
@@ -154,9 +155,9 @@ def _normalize_top_errors(errors: Any) -> List[Dict[str, Any]]:
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def _fetch_metrics(partner: str) -> Dict[str, Any]:
+def _fetch_metrics(partner: str, start_date: str, end_date: str) -> Dict[str, Any]:
     client = N8NClient()
-    return client.kpi_metrics(filters={"partner": partner})
+    return client.kpi_metrics(filters={"partner": partner, "start_date": start_date, "end_date": end_date})
 
 
 def render() -> None:
@@ -188,6 +189,21 @@ def render() -> None:
             key="kpi_partner",
         )
 
+        st.caption("Date range")
+        default_end = date.today()
+        default_start = default_end - timedelta(days=7)
+        start_date, end_date = st.date_input(
+            "Start date / End date",
+            value=(st.session_state.get("kpi_start_date", default_start), st.session_state.get("kpi_end_date", default_end)),
+        )
+        # Persist last selection (Streamlit returns datetime.date)
+        st.session_state["kpi_start_date"] = start_date
+        st.session_state["kpi_end_date"] = end_date
+
+        if start_date > end_date:
+            st.error("Start date must be on or before end date.")
+            return
+
     with right:
         use_demo = st.toggle("Use demo data", value=False, help="Use local demo metrics (no n8n call).")
         if st.button("Refresh", use_container_width=True):
@@ -200,7 +216,7 @@ def render() -> None:
     else:
         try:
             with st.spinner("Fetching metrics from n8n..."):
-                metrics = _fetch_metrics(partner)
+                metrics = _fetch_metrics(partner, start_date.isoformat(), end_date.isoformat())
         except Exception as e:  # noqa: BLE001
             st.error(f"Failed to fetch metrics from n8n: {e}")
             st.info("Enable “Use demo data” to view the dashboard without n8n.")
