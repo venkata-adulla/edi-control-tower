@@ -11,6 +11,7 @@ from ui.chatbot import render as render_chatbot
 from ui.upload import render as render_upload
 from ui.kpis import render as render_kpis
 from ui.incidents import render as render_incidents
+from ui.tracker import render as render_tracker
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ def main() -> None:
 
     all_pages: List[Page] = [
         Page("KPI Dashboard", render_kpis, Feature.kpis),
+        Page("Document Tracker", render_tracker, Feature.tracker),
         Page("Incident Drill-down", render_incidents, Feature.incidents),
         Page("File Upload", render_upload, Feature.upload),
         Page("Chatbot", render_chatbot, Feature.chatbot),

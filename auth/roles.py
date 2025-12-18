@@ -16,6 +16,7 @@ class Feature(str, Enum):
     upload = "upload"
     kpis = "kpis"
     incidents = "incidents"
+    tracker = "tracker"
 
 
 class Permission(str, Enum):
@@ -26,9 +27,9 @@ class Permission(str, Enum):
 
 
 _ROLE_FEATURES = {
-    Role.ops: {Feature.chatbot, Feature.upload, Feature.incidents},
-    Role.manager: {Feature.chatbot, Feature.kpis, Feature.incidents},
-    Role.exec: {Feature.chatbot, Feature.kpis},
+    Role.ops: {Feature.chatbot, Feature.upload, Feature.incidents, Feature.tracker},
+    Role.manager: {Feature.chatbot, Feature.kpis, Feature.incidents, Feature.tracker},
+    Role.exec: {Feature.chatbot, Feature.kpis, Feature.tracker},
 }
 
 

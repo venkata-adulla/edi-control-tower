@@ -23,6 +23,7 @@ class N8NWebhookConfig:
     webhook_kpis: str = "/webhook/kpis"
     webhook_incidents: str = "/webhook/incidents"
     webhook_status: str = "/webhook/status"
+    webhook_tracker: str = "/webhook/tracker"
 
 
 class N8NClient:
@@ -35,6 +36,7 @@ class N8NClient:
     - N8N_WEBHOOK_KPIS (default: /webhook/kpis)
     - N8N_WEBHOOK_INCIDENTS (default: /webhook/incidents)
     - N8N_WEBHOOK_STATUS (default: /webhook/status)
+    - N8N_WEBHOOK_TRACKER (default: /webhook/tracker)
     """
 
     def __init__(self, config: Optional[N8NWebhookConfig] = None, timeout_s: int = 15):
@@ -46,6 +48,7 @@ class N8NClient:
                 webhook_kpis=os.getenv("N8N_WEBHOOK_KPIS", "/webhook/kpis"),
                 webhook_incidents=os.getenv("N8N_WEBHOOK_INCIDENTS", "/webhook/incidents"),
                 webhook_status=os.getenv("N8N_WEBHOOK_STATUS", "/webhook/status"),
+                webhook_tracker=os.getenv("N8N_WEBHOOK_TRACKER", "/webhook/tracker"),
             )
 
         self.config = config
@@ -125,3 +128,7 @@ class N8NClient:
     def live_status(self) -> Dict[str, Any]:
         """Fetches live status via webhook (preferred for PoC)."""
         return self._post_json(self._abs_url(self.config.webhook_status), {})
+
+    def document_tracker(self, *, filters: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+        """Fetches document tracking data via webhook."""
+        return self._post_json(self._abs_url(self.config.webhook_tracker), dict(filters or {}))
