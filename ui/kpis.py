@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     psycopg = None  # type: ignore[assignment]
 
-_FALLBACK_PARTNERS = ["Amazon NA", "Walmart US", "FedEx Ground", "UPS Supply Chain"]
+_FALLBACK_PARTNERS = ["Amazon Retail", "Walmart Inc.", "Home Depot", "DHL Supply Chain"]
 
 
 def _pg_settings() -> Dict[str, Any]:
@@ -59,7 +59,7 @@ def _fetch_partners_from_postgres() -> List[str]:
     if not cfg.get("password"):
         raise ValueError("Missing CONTROL_TOWER_PG_PASSWORD")
 
-    query = "SELECT tp_name FROM trading_partners WHERE tp_name IS NOT NULL ORDER BY tp_name"
+    query = "SELECT partner_name FROM trading_partners WHERE partner_name IS NOT NULL ORDER BY partner_name"
     partners: List[str] = []
 
     # psycopg.connect supports keyword args (host, port, dbname, user, password, sslmode)
