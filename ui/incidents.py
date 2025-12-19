@@ -120,43 +120,33 @@ def _render_details(details: Dict[str, Any]) -> None:
                 st.write(f"**{label}**: {value}")
 
 
-def _render_all_incident_fields(inc: Dict[str, Any]) -> None:
+def _render_additional_fields(inc: Dict[str, Any]) -> None:
     """
-    Render all incident columns returned by n8n in a readable key/value list.
-    This ensures new table columns are visible without requiring UI changes.
+    Render additional workflow columns in a clean, compact way (no full-payload dump).
+
+    Example payload includes:
+    - document_id
+    - assigned_to
+    - resolved_at
     """
-    preferred = [
-        "id",
-        "incident_id",
-        "severity",
-        "status",
-        "summary",
-        "title",
-        "partner",
-        "created_at",
-        "updated_at",
-        "closed_at",
-        "correlation_id",
-        "event_type",
-        "actor",
-        "source",
+    doc_id = inc.get("document_id") or inc.get("doc_id")
+    assigned_to = inc.get("assigned_to") or inc.get("owner") or inc.get("assignee")
+    resolved_at = inc.get("resolved_at") or inc.get("closed_at")
+
+    fields = [
+        ("Document ID", doc_id),
+        ("Assigned to", assigned_to),
+        ("Resolved at", resolved_at),
     ]
-    skip = {"details"}
 
-    # Order known fields first, then the rest alphabetically.
-    keys = [k for k in preferred if k in inc and k not in skip]
-    keys += sorted([k for k in inc.keys() if k not in set(keys) and k not in skip])
+    if not any(v not in (None, "") for _, v in fields):
+        return
 
-    st.subheader("All fields")
-    for k in keys:
-        v = inc.get(k)
-        label = str(k).replace("_", " ").title()
-        if isinstance(v, (dict, list)):
-            # Show nested fields in a compact expander to stay readable.
-            with st.expander(label, expanded=False):
-                st.json(v)
-        else:
-            _render_compact_kv(label, "NA" if v in (None, "") else v)
+    st.subheader("Additional fields")
+    cols = st.columns(3)
+    for col, (label, value) in zip(cols, fields, strict=False):
+        with col:
+            _render_compact_kv(label, "NA" if value in (None, "") else value)
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -232,7 +222,7 @@ def render() -> None:
             with cols[3]:
                 _render_compact_kv("Created", inc.get("created_at", "—"))
 
-            _render_all_incident_fields(inc)
+            _render_additional_fields(inc)
 
             details = inc.get("details")
             if isinstance(details, dict) and details:
