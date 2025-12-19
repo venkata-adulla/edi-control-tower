@@ -245,6 +245,10 @@ def render() -> None:
     if st.button("Refresh", use_container_width=True):
         _fetch_documents.clear()
 
+    if not use_demo and not filters.get("doc_id"):
+        st.info("Enter a Document ID and click Refresh to view tracking details.")
+        return
+
     if use_demo:
         documents = _demo_documents()
         raw_payload: Optional[Dict[str, Any]] = None
@@ -261,7 +265,6 @@ def render() -> None:
             st.info("Enable “Use demo data” to view the tracker without n8n.")
             return
 
-    st.subheader(f"Documents ({len(documents)})")
     if not documents:
         st.caption("No documents found for the selected filters.")
         if raw_payload is not None:
@@ -269,42 +272,8 @@ def render() -> None:
                 st.json(raw_payload)
         return
 
-    df = pd.DataFrame(documents)
-    # Present a stable, readable ordering if columns exist.
-    preferred_cols = [
-        "doc_id",
-        "partner",
-        "type",
-        "status",
-        "received_at",
-        "last_update",
-        "notes",
-    ]
-    cols = [c for c in preferred_cols if c in df.columns] + [c for c in df.columns if c not in preferred_cols]
-    df = df[cols]
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-    st.divider()
-    st.subheader("Details")
-    selected = st.selectbox(
-        "Select a document",
-        options=[
-            d.get("document_id")
-            or d.get("doc_id")
-            or d.get("documentId")
-            or f"doc-{i}"
-            for i, d in enumerate(documents)
-        ],
-        index=0,
-    )
-    doc = next(
-        (
-            d
-            for d in documents
-            if (d.get("document_id") or d.get("doc_id") or d.get("documentId")) == selected
-        ),
-        documents[0],
-    )
+    # Document ID lookups should return a single record; if multiple arrive, show the first.
+    doc = documents[0]
     _render_document_human(doc)
 
     if raw_payload is not None:
