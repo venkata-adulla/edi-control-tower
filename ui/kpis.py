@@ -154,6 +154,44 @@ def _normalize_top_errors(errors: Any) -> List[Dict[str, Any]]:
     return []
 
 
+def _unwrap_n8n_payload(payload: Any) -> Dict[str, Any]:
+    """
+    n8n sometimes returns:
+    - a dict (ideal)
+    - a list of items (often [{\"output\": {...}}])
+    - a dict wrapper from our client: {\"data\": [...]}
+    This function normalizes to the inner metrics dict.
+    """
+    if isinstance(payload, dict):
+        # Our client wraps non-dicts as {"data": ...}
+        if "output" in payload and isinstance(payload.get("output"), dict):
+            return payload["output"]
+        if "data" in payload:
+            return _unwrap_n8n_payload(payload.get("data"))
+        return payload
+
+    if isinstance(payload, list) and payload:
+        first = payload[0]
+        if isinstance(first, dict) and "output" in first and isinstance(first.get("output"), dict):
+            return first["output"]
+        if isinstance(first, dict):
+            return first
+    return {}
+
+
+def _normalize_sla_chart(payload: Any) -> Tuple[List[str], List[float]]:
+    """
+    Accepts:
+    - {"labels": [...], "values": [...]}
+    - fallback to _normalize_sla shapes
+    """
+    if isinstance(payload, dict) and isinstance(payload.get("labels"), list) and isinstance(payload.get("values"), list):
+        labels = [str(x) for x in payload["labels"]]
+        values = [float(x) for x in payload["values"]]
+        return labels, values
+    return _normalize_sla(payload)
+
+
 @st.cache_data(ttl=30, show_spinner=False)
 def _fetch_metrics(partner: str, start_date: str, end_date: str) -> Dict[str, Any]:
     client = N8NClient()
@@ -222,6 +260,13 @@ def render() -> None:
             st.info("Enable “Use demo data” to view the dashboard without n8n.")
             return
 
+    # Normalize n8n response shapes (e.g., [{"output": {...}}] or {"data": [...]}).
+    metrics = _unwrap_n8n_payload(metrics)
+
+    period = metrics.get("period")
+    if isinstance(period, str) and period.strip():
+        st.caption(f"Period: **{period.strip()}**")
+
     if isinstance(metrics, dict) and isinstance(metrics.get("partners"), list):
         st.session_state["partners"] = metrics["partners"]
 
@@ -233,15 +278,16 @@ def render() -> None:
     st.subheader("Headline KPIs")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Shipments today", str(kpis.get("shipments_today", "—")))
-    c2.metric("EDI docs today", str(kpis.get("edi_docs_today", "—")))
-    c3.metric("ACK rate", f"{kpis.get('ack_rate_pct', '—')}%")
-    c4.metric("Avg processing", f"{kpis.get('avg_processing_sec', '—')}s")
+    # Support both our demo keys and the KPI workflow keys.
+    c1.metric("Total docs", str(kpis.get("total_docs", kpis.get("edi_docs_today", "—"))))
+    c2.metric("Failed docs", str(kpis.get("failed_docs", "—")))
+    c3.metric("Success %", f"{kpis.get('success_pct', kpis.get('ack_rate_pct', '—'))}%")
+    c4.metric("SLA %", f"{kpis.get('sla_pct', '—')}%")
 
     st.divider()
     st.subheader("SLA compliance")
 
-    sla_labels, sla_values = _normalize_sla(metrics.get("sla_compliance") if isinstance(metrics, dict) else None)
+    sla_labels, sla_values = _normalize_sla_chart(metrics.get("sla_chart") or metrics.get("sla_compliance"))
     sla_df = {"label": sla_labels, "value": sla_values}
     fig_pie = px.pie(
         sla_df,
@@ -255,7 +301,7 @@ def render() -> None:
     st.divider()
     st.subheader("Top errors")
 
-    top_errors = _normalize_top_errors(metrics.get("top_errors") if isinstance(metrics, dict) else None)
+    top_errors = _normalize_top_errors(metrics.get("error_chart") or metrics.get("top_errors"))
     if not top_errors:
         st.caption("No error breakdown available.")
     else:
@@ -267,6 +313,20 @@ def render() -> None:
         )
         fig_bar.update_layout(margin=dict(l=0, r=0, t=10, b=0), yaxis_title=None, xaxis_title=None)
         st.plotly_chart(fig_bar, use_container_width=True)
+
+    insights = metrics.get("ai_insights")
+    if isinstance(insights, list) and insights:
+        with st.expander("AI insights", expanded=True):
+            for item in insights:
+                if isinstance(item, str) and item.strip():
+                    st.write(f"- {item.strip()}")
+
+    recs = metrics.get("ai_recommendations")
+    if isinstance(recs, list) and recs:
+        with st.expander("AI recommendations", expanded=True):
+            for item in recs:
+                if isinstance(item, str) and item.strip():
+                    st.write(f"- {item.strip()}")
 
     with st.expander("Raw metrics payload", expanded=False):
         st.json(metrics)
