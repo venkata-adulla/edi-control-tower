@@ -120,34 +120,6 @@ def _render_details(details: Dict[str, Any]) -> None:
                 st.write(f"**{label}**: {value}")
 
 
-def _render_additional_fields(inc: Dict[str, Any]) -> None:
-    """
-    Render additional workflow columns in a clean, compact way (no full-payload dump).
-
-    Example payload includes:
-    - document_id
-    - assigned_to
-    - resolved_at
-    """
-    doc_id = inc.get("document_id") or inc.get("doc_id")
-    assigned_to = inc.get("assigned_to") or inc.get("owner") or inc.get("assignee")
-    resolved_at = inc.get("resolved_at") or inc.get("closed_at")
-
-    fields = [
-        ("Document ID", doc_id),
-        ("Assigned to", assigned_to),
-        ("Resolved at", resolved_at),
-    ]
-
-    if not any(v not in (None, "") for _, v in fields):
-        return
-
-    cols = st.columns(3)
-    for col, (label, value) in zip(cols, fields, strict=False):
-        with col:
-            _render_compact_kv(label, "NA" if value in (None, "") else value)
-
-
 @st.cache_data(ttl=30, show_spinner=False)
 def _fetch_incidents(filters: Dict[str, Any]) -> Dict[str, Any]:
     client = N8NClient()
@@ -211,17 +183,26 @@ def render() -> None:
 
     for inc in incidents:
         with st.expander(_incident_title(inc), expanded=False):
-            cols = st.columns(4)
-            with cols[0]:
-                _render_compact_kv("Severity", inc.get("severity", "—"))
-            with cols[1]:
-                _render_compact_kv("Status", inc.get("status", "—"))
-            with cols[2]:
-                _render_compact_kv("Partner", inc.get("partner", inc.get("details", {}).get("partner", "—")))
-            with cols[3]:
-                _render_compact_kv("Created", inc.get("created_at", "—"))
+            summary_text = inc.get("summary") or inc.get("title")
+            if isinstance(summary_text, str) and summary_text.strip():
+                st.markdown(f"**Summary**: {summary_text.strip()}")
+            else:
+                st.markdown("**Summary**: NA")
 
-            _render_additional_fields(inc)
+            doc_id = inc.get("document_id") or inc.get("doc_id") or "NA"
+            assigned_to = inc.get("assigned_to") or inc.get("owner") or inc.get("assignee") or "NA"
+            resolved_at = inc.get("resolved_at") or inc.get("closed_at") or "NA"
+
+            left, right = st.columns(2)
+            with left:
+                _render_compact_kv("Severity", inc.get("severity", "—"))
+                _render_compact_kv("Status", inc.get("status", "—"))
+                _render_compact_kv("Document ID", doc_id)
+            with right:
+                _render_compact_kv("Partner", inc.get("partner", inc.get("details", {}).get("partner", "—")))
+                _render_compact_kv("Created", inc.get("created_at", "—"))
+                _render_compact_kv("Assigned to", assigned_to)
+                _render_compact_kv("Resolved at", resolved_at)
 
             details = inc.get("details")
             if isinstance(details, dict) and details:
