@@ -142,7 +142,6 @@ def _render_additional_fields(inc: Dict[str, Any]) -> None:
     if not any(v not in (None, "") for _, v in fields):
         return
 
-    st.subheader("Additional fields")
     cols = st.columns(3)
     for col, (label, value) in zip(cols, fields, strict=False):
         with col:
