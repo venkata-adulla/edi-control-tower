@@ -77,25 +77,6 @@ def _render_structured_payload(payload: Dict[str, Any]) -> bool:
             st.json(payload)
         return True
 
-    if isinstance(summary, str) and summary.strip():
-        st.subheader("Summary")
-        st.write(summary.strip())
-    else:
-        st.subheader("Summary")
-        st.write("NA")
-
-    st.subheader("Findings")
-    if empty_findings:
-        st.write("NA")
-    elif isinstance(findings, list):
-        for item in findings:
-            if isinstance(item, str) and item.strip():
-                st.write(f"- {item.strip()}")
-            else:
-                st.write(f"- {item}")
-    else:
-        st.write(str(findings))
-
     st.subheader("Details")
     if empty_details:
         st.write("NA")
@@ -117,6 +98,24 @@ def _render_structured_payload(payload: Dict[str, Any]) -> bool:
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.write(str(details))
+
+    st.subheader("Findings")
+    if empty_findings:
+        st.write("NA")
+    elif isinstance(findings, list):
+        for item in findings:
+            if isinstance(item, str) and item.strip():
+                st.write(f"- {item.strip()}")
+            else:
+                st.write(f"- {item}")
+    else:
+        st.write(str(findings))
+
+    st.subheader("Summary")
+    if isinstance(summary, str) and summary.strip():
+        st.write(summary.strip())
+    else:
+        st.write("NA")
 
     with st.expander("Raw response", expanded=False):
         st.json(payload)
