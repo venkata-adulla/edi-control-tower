@@ -44,18 +44,57 @@ def _unwrap_n8n_items(payload: Any) -> List[Dict[str, Any]]:
     """
     n8n can return lists of items where each item is shaped like:
     - {"json": {...}}
+    - {"json": [{...}, {"acks": [...]}, {"shipments": [...]}, ...]}
+    - {"json": [[{...}, {"acks": [...]}, ...]]}  (nested list)
     or already a list of dicts.
     """
     if isinstance(payload, dict) and "data" in payload:
         return _unwrap_n8n_items(payload.get("data"))
+
+    def _flatten_list(val: Any) -> List[Any]:
+        if isinstance(val, list) and len(val) == 1 and isinstance(val[0], list):
+            return list(val[0])
+        if isinstance(val, list):
+            return list(val)
+        return []
+
+    def _merge_doc_fragments(items: Any) -> Optional[Dict[str, Any]]:
+        """
+        Merge a list of dict fragments into a single document dict.
+        Example:
+          [{doc fields...}, {"acks":[...]}, {"shipments":[...]}] -> {doc fields..., "acks":[...], "shipments":[...]}
+        """
+        parts = _flatten_list(items)
+        if not parts:
+            return None
+
+        merged: Dict[str, Any] = {}
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            # If it's a single-key wrapper, merge it in.
+            if len(part) == 1:
+                (k, v), = part.items()
+                merged[k] = v
+                continue
+            # Otherwise merge the dict fields.
+            merged.update(part)
+        return merged or None
 
     if isinstance(payload, list):
         out: List[Dict[str, Any]] = []
         for item in payload:
             if isinstance(item, dict) and "json" in item and isinstance(item.get("json"), dict):
                 out.append(item["json"])
+            elif isinstance(item, dict) and "json" in item and isinstance(item.get("json"), list):
+                merged = _merge_doc_fragments(item["json"])
+                if merged:
+                    out.append(merged)
             elif isinstance(item, dict):
                 out.append(item)
+            elif isinstance(item, list):
+                # Occasionally nested lists appear; flatten them.
+                out.extend(_unwrap_n8n_items(item))
         return out
     if isinstance(payload, dict):
         # Some workflows return {"documents": [...]} or {"items": [...]}
@@ -143,11 +182,11 @@ def _render_document_human(doc: Dict[str, Any]) -> None:
     _render_list_section(
         "Pipeline",
         doc.get("pipeline"),
-        fields=["stage", "status", "details"],
+        fields=["stage", "status", "details", "event_time"],
     )
     _render_list_section(
         "Acknowledgments",
-        doc.get("acknowledgments"),
+        doc.get("acknowledgments") or doc.get("acks"),
         fields=["ack_type", "status", "sent_at"],
     )
     _render_list_section(
@@ -172,7 +211,7 @@ def _render_document_human(doc: Dict[str, Any]) -> None:
     )
 
     st.subheader("Summary")
-    summary = doc.get("Summary") or doc.get("summary")
+    summary = doc.get("Summary") or doc.get("summary") or doc.get("output")
     if isinstance(summary, str) and summary.strip():
         st.write(summary.strip())
     else:
