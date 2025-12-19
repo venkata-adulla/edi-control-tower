@@ -231,9 +231,9 @@ def render() -> None:
     _, right = st.columns([2, 1])
     use_demo = right.toggle("Use demo data", value=False)
 
-    st.subheader("Enter the Document ID and click on Refresh")
+    st.subheader("Document ID")
     doc_id = st.text_input(
-        "Document ID",
+        "Enter the Document ID and click on Refresh",
         placeholder="e.g. DOC-030",
         help="Enter a Document ID to fetch the full tracking view.",
     )
