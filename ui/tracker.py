@@ -8,11 +8,11 @@ import streamlit as st
 from api.n8n_client import N8NClient
 
 
-def _demo_documents(partner: str) -> List[Dict[str, Any]]:
+def _demo_documents() -> List[Dict[str, Any]]:
     return [
         {
             "doc_id": "DOC-000184",
-            "partner": partner,
+            "partner": "ACME Manufacturing",
             "type": "850",
             "status": "processed",
             "received_at": "2025-12-17T09:22:11Z",
@@ -21,7 +21,7 @@ def _demo_documents(partner: str) -> List[Dict[str, Any]]:
         },
         {
             "doc_id": "DOC-000185",
-            "partner": partner,
+            "partner": "ACME Manufacturing",
             "type": "856",
             "status": "exception",
             "received_at": "2025-12-17T10:03:02Z",
@@ -30,7 +30,7 @@ def _demo_documents(partner: str) -> List[Dict[str, Any]]:
         },
         {
             "doc_id": "DOC-000186",
-            "partner": partner,
+            "partner": "ACME Manufacturing",
             "type": "997",
             "status": "queued",
             "received_at": "2025-12-17T10:55:19Z",
@@ -66,12 +66,7 @@ def render() -> None:
     st.title("Document Tracker")
     st.caption("Track EDI documents end-to-end. Data is fetched via n8n webhooks.")
 
-    partners: List[str] = st.session_state.get("partners", [])
-    if not partners:
-        partners = ["Amazon NA", "Walmart US", "FedEx Ground", "UPS Supply Chain"]
-
-    left, right = st.columns([2, 1])
-    partner = left.selectbox("Partner", options=partners, index=0)
+    _, right = st.columns([2, 1])
     use_demo = right.toggle("Use demo data", value=False)
 
     c1, c2, c3 = st.columns(3)
@@ -83,7 +78,7 @@ def render() -> None:
         index=0,
     )
 
-    filters: Dict[str, Any] = {"partner": partner}
+    filters: Dict[str, Any] = {}
     if doc_id.strip():
         filters["doc_id"] = doc_id.strip()
     if doc_type != "Any":
@@ -95,7 +90,7 @@ def render() -> None:
         _fetch_documents.clear()
 
     if use_demo:
-        documents = _demo_documents(partner)
+        documents = _demo_documents()
         raw_payload: Optional[Dict[str, Any]] = None
     else:
         try:
