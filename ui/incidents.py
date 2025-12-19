@@ -57,6 +57,22 @@ def _incident_title(i: Dict[str, Any]) -> str:
     return f"{inc_id} · {sev} · {status} — {summary}"
 
 
+def _render_compact_kv(label: str, value: Any) -> None:
+    """
+    Render a compact label/value pair that wraps instead of truncating like st.metric.
+    """
+    safe_value = "—" if value is None else str(value)
+    st.markdown(
+        f"""
+<div style="line-height:1.15">
+  <div style="font-size:0.80rem; opacity:0.70; margin-bottom:0.15rem;">{label}</div>
+  <div style="font-size:0.95rem; font-weight:600; word-break:break-word; overflow-wrap:anywhere;">{safe_value}</div>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_details(details: Dict[str, Any]) -> None:
     """
     Render incident details in a human-readable format.
@@ -165,10 +181,14 @@ def render() -> None:
     for inc in incidents:
         with st.expander(_incident_title(inc), expanded=False):
             cols = st.columns(4)
-            cols[0].metric("Severity", str(inc.get("severity", "—")))
-            cols[1].metric("Status", str(inc.get("status", "—")))
-            cols[2].metric("Partner", str(inc.get("partner", inc.get("details", {}).get("partner", "—"))))
-            cols[3].metric("Created", str(inc.get("created_at", "—")))
+            with cols[0]:
+                _render_compact_kv("Severity", inc.get("severity", "—"))
+            with cols[1]:
+                _render_compact_kv("Status", inc.get("status", "—"))
+            with cols[2]:
+                _render_compact_kv("Partner", inc.get("partner", inc.get("details", {}).get("partner", "—")))
+            with cols[3]:
+                _render_compact_kv("Created", inc.get("created_at", "—"))
 
             details = inc.get("details")
             if isinstance(details, dict) and details:
