@@ -63,6 +63,20 @@ def _render_structured_payload(payload: Dict[str, Any]) -> bool:
     if summary is None and findings is None and details is None:
         return False
 
+    empty_details = _is_effectively_empty_list(details)
+    empty_findings = _is_effectively_empty_list(findings)
+    empty_summary = not (isinstance(summary, str) and summary.strip())
+
+    # If n8n returned an empty structured payload, show a friendly "no results" message.
+    if empty_details and empty_findings and empty_summary:
+        st.info(
+            "🤔 I couldn’t find any matching records for your request.\n\n"
+            "Try changing your filter (status, date range, partner, etc.) or ask the question in a slightly different way."
+        )
+        with st.expander("Raw response", expanded=False):
+            st.json(payload)
+        return True
+
     if isinstance(summary, str) and summary.strip():
         st.subheader("Summary")
         st.write(summary.strip())
@@ -71,7 +85,7 @@ def _render_structured_payload(payload: Dict[str, Any]) -> bool:
         st.write("NA")
 
     st.subheader("Findings")
-    if _is_effectively_empty_list(findings):
+    if empty_findings:
         st.write("NA")
     elif isinstance(findings, list):
         for item in findings:
@@ -83,7 +97,7 @@ def _render_structured_payload(payload: Dict[str, Any]) -> bool:
         st.write(str(findings))
 
     st.subheader("Details")
-    if _is_effectively_empty_list(details):
+    if empty_details:
         st.write("NA")
     elif isinstance(details, list) and all(isinstance(x, dict) for x in details):
         df = pd.DataFrame(details)
