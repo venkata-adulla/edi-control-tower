@@ -57,6 +57,50 @@ def _incident_title(i: Dict[str, Any]) -> str:
     return f"{inc_id} · {sev} · {status} — {summary}"
 
 
+def _render_details(details: Dict[str, Any]) -> None:
+    """
+    Render incident details in a human-readable format.
+    Special-cases `ai_triage` when present.
+    """
+    ai = details.get("ai_triage")
+    if isinstance(ai, dict) and ai:
+        st.subheader("AI triage")
+        summary = ai.get("summary")
+        explanation = ai.get("explanation")
+        action = ai.get("action_recommended") or ai.get("recommended_action")
+        confidence = ai.get("confidence")
+
+        if isinstance(summary, str) and summary.strip():
+            st.write(f"**Summary**: {summary.strip()}")
+        if isinstance(explanation, str) and explanation.strip():
+            st.write(f"**Explanation**: {explanation.strip()}")
+        if isinstance(action, str) and action.strip():
+            st.write(f"**Recommended action**: {action.strip()}")
+        if confidence is not None:
+            try:
+                c = float(confidence)
+                st.write(f"**Confidence**: {c:.2f}")
+            except (TypeError, ValueError):
+                st.write(f"**Confidence**: {confidence}")
+
+    # Render remaining keys (excluding ai_triage) as readable fields.
+    other = {k: v for k, v in details.items() if k != "ai_triage"}
+    if other:
+        st.subheader("Details")
+        for key, value in other.items():
+            label = str(key).replace("_", " ").title()
+            if isinstance(value, list):
+                st.write(f"**{label}**:")
+                for item in value:
+                    st.write(f"- {item}")
+            elif isinstance(value, dict):
+                st.write(f"**{label}**:")
+                for k2, v2 in value.items():
+                    st.write(f"- **{str(k2).replace('_', ' ').title()}**: {v2}")
+            else:
+                st.write(f"**{label}**: {value}")
+
+
 @st.cache_data(ttl=30, show_spinner=False)
 def _fetch_incidents(filters: Dict[str, Any]) -> Dict[str, Any]:
     client = N8NClient()
@@ -128,11 +172,7 @@ def render() -> None:
 
             details = inc.get("details")
             if isinstance(details, dict) and details:
-                st.subheader("Details")
-                st.json(details)
-
-            st.subheader("Full payload")
-            st.json(inc)
+                _render_details(details)
 
     if raw_payload is not None:
         with st.expander("Raw response (n8n)", expanded=False):
