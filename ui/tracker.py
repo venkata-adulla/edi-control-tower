@@ -231,22 +231,16 @@ def render() -> None:
     _, right = st.columns([2, 1])
     use_demo = right.toggle("Use demo data", value=False)
 
-    c1, c2, c3 = st.columns(3)
-    doc_id = c1.text_input("Document ID", placeholder="e.g. DOC-000185")
-    doc_type = c2.selectbox("Doc type", options=["Any", "850", "855", "856", "940", "945", "997"], index=0)
-    status = c3.selectbox(
-        "Status",
-        options=["Any", "queued", "processing", "processed", "exception", "failed"],
-        index=0,
+    st.subheader("Lookup")
+    doc_id = st.text_input(
+        "Document ID",
+        placeholder="e.g. DOC-030",
+        help="Enter a Document ID to fetch the full tracking view.",
     )
 
     filters: Dict[str, Any] = {}
     if doc_id.strip():
         filters["doc_id"] = doc_id.strip()
-    if doc_type != "Any":
-        filters["type"] = doc_type
-    if status != "Any":
-        filters["status"] = status
 
     if st.button("Refresh", use_container_width=True):
         _fetch_documents.clear()
