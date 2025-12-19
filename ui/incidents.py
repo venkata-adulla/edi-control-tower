@@ -79,7 +79,10 @@ def _render_details(details: Dict[str, Any]) -> None:
     Special-cases `ai_triage` when present.
     """
     ai = details.get("ai_triage")
-    if isinstance(ai, dict) and ai:
+    if ai is None and "ai_triage" in details:
+        st.subheader("AI triage")
+        st.write("NA")
+    elif isinstance(ai, dict) and ai:
         st.subheader("AI triage")
         summary = ai.get("summary")
         explanation = ai.get("explanation")
