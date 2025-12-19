@@ -120,6 +120,45 @@ def _render_details(details: Dict[str, Any]) -> None:
                 st.write(f"**{label}**: {value}")
 
 
+def _render_all_incident_fields(inc: Dict[str, Any]) -> None:
+    """
+    Render all incident columns returned by n8n in a readable key/value list.
+    This ensures new table columns are visible without requiring UI changes.
+    """
+    preferred = [
+        "id",
+        "incident_id",
+        "severity",
+        "status",
+        "summary",
+        "title",
+        "partner",
+        "created_at",
+        "updated_at",
+        "closed_at",
+        "correlation_id",
+        "event_type",
+        "actor",
+        "source",
+    ]
+    skip = {"details"}
+
+    # Order known fields first, then the rest alphabetically.
+    keys = [k for k in preferred if k in inc and k not in skip]
+    keys += sorted([k for k in inc.keys() if k not in set(keys) and k not in skip])
+
+    st.subheader("All fields")
+    for k in keys:
+        v = inc.get(k)
+        label = str(k).replace("_", " ").title()
+        if isinstance(v, (dict, list)):
+            # Show nested fields in a compact expander to stay readable.
+            with st.expander(label, expanded=False):
+                st.json(v)
+        else:
+            _render_compact_kv(label, "NA" if v in (None, "") else v)
+
+
 @st.cache_data(ttl=30, show_spinner=False)
 def _fetch_incidents(filters: Dict[str, Any]) -> Dict[str, Any]:
     client = N8NClient()
@@ -192,6 +231,8 @@ def render() -> None:
                 _render_compact_kv("Partner", inc.get("partner", inc.get("details", {}).get("partner", "—")))
             with cols[3]:
                 _render_compact_kv("Created", inc.get("created_at", "—"))
+
+            _render_all_incident_fields(inc)
 
             details = inc.get("details")
             if isinstance(details, dict) and details:
