@@ -200,9 +200,9 @@ def render() -> None:
                 _render_compact_kv("Document ID", doc_id)
             with right:
                 _render_compact_kv("Partner", inc.get("partner", inc.get("details", {}).get("partner", "—")))
+                _render_compact_kv("Assigned to:", assigned_to)
                 _render_compact_kv("Created", inc.get("created_at", "—"))
-                _render_compact_kv("Assigned to", assigned_to)
-                _render_compact_kv("Resolved at", resolved_at)
+                _render_compact_kv("Resolved", resolved_at)
 
             details = inc.get("details")
             if isinstance(details, dict) and details:
