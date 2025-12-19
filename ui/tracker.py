@@ -231,7 +231,7 @@ def render() -> None:
     _, right = st.columns([2, 1])
     use_demo = right.toggle("Use demo data", value=False)
 
-    st.subheader("Lookup")
+    st.subheader("Enter the Document ID and click on Refresh")
     doc_id = st.text_input(
         "Document ID",
         placeholder="e.g. DOC-030",
