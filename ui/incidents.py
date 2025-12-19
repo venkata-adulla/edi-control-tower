@@ -64,7 +64,7 @@ def _render_compact_kv(label: str, value: Any) -> None:
     safe_value = "—" if value is None else str(value)
     st.markdown(
         f"""
-<div style="line-height:1.15">
+<div style="line-height:1.15; margin-bottom:0.75rem;">
   <div style="font-size:0.80rem; opacity:0.70; margin-bottom:0.15rem;">{label}</div>
   <div style="font-size:0.95rem; font-weight:600; word-break:break-word; overflow-wrap:anywhere;">{safe_value}</div>
 </div>
