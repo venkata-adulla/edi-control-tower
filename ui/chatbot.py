@@ -55,9 +55,9 @@ def _render_structured_payload(payload: Dict[str, Any]) -> bool:
     Render known structured response shapes.
     Returns True if we rendered something structured, False to fall back to text.
     """
-    summary = payload.get("summary")
-    findings = payload.get("findings")
     details = payload.get("details")
+    findings = payload.get("findings")
+    summary = payload.get("summary")
 
     # Only treat as structured if at least one of these keys exists.
     if summary is None and findings is None and details is None:
