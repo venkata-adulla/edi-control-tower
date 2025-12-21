@@ -29,9 +29,9 @@ def _set_role_env(selected_role_value: str) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="AI EDI Control Tower", layout="wide")
+    st.set_page_config(page_title="AI EDI-Ops Hub", layout="wide")
 
-    st.sidebar.title("AI EDI Control Tower")
+    st.sidebar.title("AI EDI-Ops Hub")
 
     selected_role_value = st.sidebar.selectbox(
         "Role",
@@ -55,8 +55,7 @@ def main() -> None:
     visible_pages = [p for p in all_pages if can_access(p.feature)]
     pages_by_label: Dict[str, Callable[[], None]] = {p.label: p.render for p in visible_pages}
 
-    st.title("AI EDI Control Tower")
-    st.caption("Enterprise PoC — Streamlit frontend with webhook-based n8n backend integration.")
+    st.title("AI EDI-Ops Hub")
 
     if not pages_by_label:
         st.error("No pages are available for the selected role.")
