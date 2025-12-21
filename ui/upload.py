@@ -63,6 +63,24 @@ def _pg_settings() -> Dict[str, Any]:
     Uses environment variables:
     - CONTROL_TOWER_PG_HOST / PORT / DB / USER / PASSWORD / SSLMODE
     """
+    def _get_setting(name: str, default: Optional[str] = None) -> Optional[str]:
+        # Prefer environment variables; fall back to Streamlit secrets if present.
+        v = os.getenv(name)
+        if v is not None and str(v).strip() != "":
+            return v
+        try:
+            secrets = st.secrets  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            secrets = {}
+        # Common patterns: flat keys or a nested "postgres" section.
+        if isinstance(secrets, dict):
+            sv = secrets.get(name)
+            if sv is None and isinstance(secrets.get("postgres"), dict):
+                sv = secrets["postgres"].get(name)
+            if sv is not None and str(sv).strip() != "":
+                return str(sv)
+        return default
+
     sslmode_raw = (os.getenv("CONTROL_TOWER_PG_SSLMODE", "require") or "require").strip()
     sslmode = sslmode_raw.lower()
     if sslmode in {"disabled", "disable", "off", "false", "0", "no"}:
@@ -71,18 +89,19 @@ def _pg_settings() -> Dict[str, Any]:
         sslmode = "require"
 
     return {
-        "host": os.getenv("CONTROL_TOWER_PG_HOST", "aws-1-ap-south-1.pooler.supabase.com"),
-        "port": int(os.getenv("CONTROL_TOWER_PG_PORT", "5432")),
-        "dbname": os.getenv("CONTROL_TOWER_PG_DB", "postgres"),
-        "user": os.getenv("CONTROL_TOWER_PG_USER", "postgres.qzyvkjcgfyltezraiqwh"),
-        "password": os.getenv("CONTROL_TOWER_PG_PASSWORD"),
+        "host": _get_setting("CONTROL_TOWER_PG_HOST", "aws-1-ap-south-1.pooler.supabase.com"),
+        "port": int(_get_setting("CONTROL_TOWER_PG_PORT", "5432") or "5432"),
+        "dbname": _get_setting("CONTROL_TOWER_PG_DB", "postgres"),
+        "user": _get_setting("CONTROL_TOWER_PG_USER", "postgres.qzyvkjcgfyltezraiqwh"),
+        "password": _get_setting("CONTROL_TOWER_PG_PASSWORD"),
         "sslmode": sslmode,
     }
 
 
 def _pg_is_configured() -> bool:
     cfg = _pg_settings()
-    return bool(cfg.get("host") and cfg.get("user") and cfg.get("password"))
+    # Host/user have sensible defaults; password is the only required secret.
+    return bool(cfg.get("password"))
 
 
 def _pg_connect():
@@ -90,7 +109,7 @@ def _pg_connect():
         raise ModuleNotFoundError("psycopg is not installed")
     cfg = _pg_settings()
     if not _pg_is_configured():
-        raise ValueError("Postgres env vars not configured")
+        raise ValueError("Postgres credentials not configured")
     # Prefer dict rows for flexible schemas.
     try:
         return psycopg.connect(connect_timeout=8, row_factory=dict_row, **cfg)
