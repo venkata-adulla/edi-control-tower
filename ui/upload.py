@@ -19,7 +19,10 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 def _status_webhook_url(client: N8NClient) -> str:
-    return f"{client.config.base_url.rstrip('/')}/{client.config.webhook_status.lstrip('/')}"
+    webhook_status = getattr(client.config, "webhook_status", None)
+    if not webhook_status:
+        raise ValueError("n8n status webhook is not configured")
+    return f"{client.config.base_url.rstrip('/')}/{str(webhook_status).lstrip('/')}"
 
 
 def _extract_poll_target(upload_resp: Dict[str, Any], client: N8NClient) -> Tuple[Optional[str], Optional[str]]:
@@ -120,7 +123,8 @@ def _fetch_events_for_filename(filename: str, limit: int = 500) -> Tuple[Optiona
     Fetch document_events for a given documents.original_filename.
     Returns (document_id, events). If document isn't registered yet, returns (None, []).
     """
-    query = """
+    # 1) Best case: documents.original_filename matches and we can join directly.
+    query_join_exact = """
         SELECT de.*, d.document_id
         FROM documents d
         JOIN document_events de ON de.document_id = d.document_id
@@ -128,15 +132,52 @@ def _fetch_events_for_filename(filename: str, limit: int = 500) -> Tuple[Optiona
         ORDER BY de.event_time ASC
         LIMIT %s
     """
+
+    # 2) Fallback: documents.original_filename may store full paths or normalized variants.
+    query_doc_like = """
+        SELECT document_id
+        FROM documents
+        WHERE original_filename ILIKE %s
+        LIMIT 1
+    """
+
+    # 3) Fallback: sometimes events exist before documents row is created; try correlation_id/details.
+    query_events_by_hint = """
+        SELECT *
+        FROM document_events
+        WHERE correlation_id = %s
+           OR details ILIKE %s
+        ORDER BY event_time ASC
+        LIMIT %s
+    """
     with _pg_connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (filename, limit))
+            cur.execute(query_join_exact, (filename, limit))
             rows = cur.fetchall() or []
-            if not rows:
-                # Might not be registered yet, or no events yet.
-                return (None, [])
-            doc_id = rows[0].get("document_id")
-            return (doc_id, [dict(r) for r in rows])
+            if rows:
+                doc_id = rows[0].get("document_id")
+                return (doc_id, [dict(r) for r in rows])
+
+            # Fallback (2): find a document_id via ILIKE and then fetch events by document_id.
+            cur.execute(query_doc_like, (f"%{filename}%",))
+            doc_row = cur.fetchone()
+            if doc_row and doc_row.get("document_id"):
+                doc_id = doc_row.get("document_id")
+                events = _fetch_document_events(doc_id, limit=limit)
+                return (doc_id, events)
+
+            # Fallback (3): query events directly by correlation_id/details.
+            cur.execute(query_events_by_hint, (filename, f"%{filename}%", limit))
+            ev_rows = cur.fetchall() or []
+            if ev_rows:
+                doc_id = ev_rows[0].get("document_id")
+                # We may only have a subset due to LIMIT; fetch full timeline by document_id if present.
+                if doc_id:
+                    return (doc_id, _fetch_document_events(doc_id, limit=limit))
+                return (None, [dict(r) for r in ev_rows])
+
+            # Still nothing.
+            return (None, [])
 
 
 def _fetch_document_events(document_id: Any, limit: int = 500) -> List[Dict[str, Any]]:
@@ -360,7 +401,9 @@ def render() -> None:
 
         st.success("Upload accepted by n8n")
         with st.expander("Upload response", expanded=False):
-            st.json(upload_resp)
+            _render_human_readable_result(_unwrap_final_upload_payload(upload_resp))
+            with st.expander("Upload response (raw)", expanded=False):
+                st.json(upload_resp)
 
         # If the webhook already returned a final result, show it immediately.
         if upload_resp.get("result") is not None and not poll_url and not job_id:
