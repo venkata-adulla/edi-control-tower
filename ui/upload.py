@@ -81,6 +81,13 @@ def _pg_settings() -> Dict[str, Any]:
                 return str(sv)
         return default
 
+    def _get_any(names: List[str], default: Optional[str] = None) -> Optional[str]:
+        for n in names:
+            v = _get_setting(n)
+            if v is not None and str(v).strip() != "":
+                return v
+        return default
+
     sslmode_raw = (os.getenv("CONTROL_TOWER_PG_SSLMODE", "require") or "require").strip()
     sslmode = sslmode_raw.lower()
     if sslmode in {"disabled", "disable", "off", "false", "0", "no"}:
@@ -89,11 +96,21 @@ def _pg_settings() -> Dict[str, Any]:
         sslmode = "require"
 
     return {
-        "host": _get_setting("CONTROL_TOWER_PG_HOST", "aws-1-ap-south-1.pooler.supabase.com"),
-        "port": int(_get_setting("CONTROL_TOWER_PG_PORT", "5432") or "5432"),
-        "dbname": _get_setting("CONTROL_TOWER_PG_DB", "postgres"),
-        "user": _get_setting("CONTROL_TOWER_PG_USER", "postgres.qzyvkjcgfyltezraiqwh"),
-        "password": _get_setting("CONTROL_TOWER_PG_PASSWORD"),
+        "host": _get_any(
+            ["CONTROL_TOWER_PG_HOST", "PGHOST", "POSTGRES_HOST"],
+            "aws-1-ap-south-1.pooler.supabase.com",
+        ),
+        "port": int(_get_any(["CONTROL_TOWER_PG_PORT", "PGPORT", "POSTGRES_PORT"], "5432") or "5432"),
+        "dbname": _get_any(["CONTROL_TOWER_PG_DB", "PGDATABASE", "POSTGRES_DB"], "postgres"),
+        "user": _get_any(["CONTROL_TOWER_PG_USER", "PGUSER", "POSTGRES_USER"], "postgres.qzyvkjcgfyltezraiqwh"),
+        "password": _get_any(
+            [
+                "CONTROL_TOWER_PG_PASSWORD",
+                "PGPASSWORD",
+                "POSTGRES_PASSWORD",
+                "SUPABASE_DB_PASSWORD",
+            ]
+        ),
         "sslmode": sslmode,
     }
 
@@ -409,7 +426,6 @@ def render() -> None:
     st.session_state.uploaded_files.append(record)
 
     st.success(f"Uploaded: {uploaded.name} ({len(content)} bytes)")
-    st.json(record)
 
     st.divider()
     # Polling configuration (kept intentionally out of the UI)
@@ -538,7 +554,7 @@ def render() -> None:
                         status_resp = client.call_webhook(_status_webhook_url(client), {"job_id": job_id})
                     else:
                         status_placeholder.warning(
-                            "Live status polling is unavailable (no Postgres configuration and no n8n status webhook)."
+                            "Live status polling is unavailable. Configure Postgres (document_events) to see a processing timeline."
                         )
                         break
 
