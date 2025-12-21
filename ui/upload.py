@@ -270,6 +270,42 @@ def _render_pipeline(latest_by_step: List[Tuple[str, Dict[str, Any]]]) -> None:
             st.write("│")
 
 
+def _render_pipeline_table(events: List[Dict[str, Any]]) -> None:
+    """
+    Render a pipeline timeline as a table (human readable) similar to tracker.py.
+    Expects document_events-style rows (stage/status/details/event_time/...).
+    """
+    if not events:
+        st.write("NA")
+        return
+
+    # Deduplicate by stage, keep latest event for each stage (by event_time).
+    latest_by_stage: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    for ev in events:
+        stage = _infer_step_name(ev)
+        if stage not in latest_by_stage:
+            order.append(stage)
+        latest_by_stage[stage] = ev
+
+    rows: List[Dict[str, Any]] = []
+    for stage in order:
+        ev = latest_by_stage[stage]
+        rows.append(
+            {
+                "Stage": stage,
+                "Status": (ev.get("status") or "").upper() if isinstance(ev.get("status"), str) else (ev.get("status") or "NA"),
+                "Details": ev.get("details") or "NA",
+                "Event time": ev.get("event_time") or ev.get("created_at") or "NA",
+                "Severity": ev.get("severity") or "NA",
+                "Actor": ev.get("actor") or "NA",
+                "Event type": ev.get("event_type") or "NA",
+            }
+        )
+
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
 def _unwrap_final_upload_payload(upload_resp: Dict[str, Any]) -> Dict[str, Any]:
     """
     Try to normalize n8n upload responses into a dict we can render.
@@ -417,9 +453,8 @@ def render() -> None:
 
         status_placeholder = st.empty()
         progress_bar = st.progress(0)
-        logs_expander = st.expander("Processing updates", expanded=True)
-        with logs_expander:
-            pipeline_placeholder = st.empty()
+        st.subheader("Live processing")
+        pipeline_placeholder = st.empty()
 
         started = time.time()
         last_status: Dict[str, Any] = {}
@@ -439,26 +474,16 @@ def render() -> None:
 
                     document_id, events = _fetch_events_for_filename(uploaded.name)
                     if not events:
-                        status_placeholder.info("Status: waiting for document events…")
                         with pipeline_placeholder.container():
-                            st.caption("No events yet (waiting for document registration / first workflow step).")
+                            st.info("Waiting for document events…")
                         time.sleep(float(interval_s))
                         continue
 
                     last_events = events
                     events_sorted = events  # already ordered by event_time asc
-                    latest: Dict[str, Dict[str, Any]] = {}
-                    order: List[str] = []
-                    for ev in events_sorted:
-                        step = _infer_step_name(ev)
-                        if step not in latest:
-                            order.append(step)
-                        latest[step] = ev
-
-                    # Render pipeline (vertical), refreshed each poll.
-                    status_placeholder.info(f"Status: tracking document_id={document_id or '—'}")
+                    # Render pipeline as a table, refreshed each poll.
                     with pipeline_placeholder.container():
-                        _render_pipeline([(s, latest[s]) for s in order])
+                        _render_pipeline_table(events_sorted)
 
                     # Progress: use latest numeric progress if present; else derive from ok/fail steps.
                     p = None
@@ -467,9 +492,23 @@ def render() -> None:
                         raw_p = last_event.get("progress")
                         if isinstance(raw_p, (int, float)):
                             p = raw_p / 100.0 if raw_p > 1 else float(raw_p)
-                    if p is None and order:
-                        ok = sum(1 for s in order if _status_bucket(_infer_status(latest[s])) == "ok")
-                        p = ok / max(1, len(order))
+                    if p is None:
+                        # derive based on stage completion ratio
+                        stages = []
+                        seen = set()
+                        for ev in events_sorted:
+                            s = _infer_step_name(ev)
+                            if s in seen:
+                                continue
+                            seen.add(s)
+                            stages.append(s)
+                        if stages:
+                            ok = 0
+                            for s in stages:
+                                bucket = _status_bucket(_infer_status(latest_by_stage.get(s, {}))) if "latest_by_stage" in locals() else "unknown"
+                                if bucket == "ok":
+                                    ok += 1
+                            p = ok / max(1, len(stages))
                     if p is not None:
                         progress_bar.progress(max(0.0, min(1.0, float(p))))
 
@@ -493,13 +532,6 @@ def render() -> None:
                     if p is not None:
                         progress_bar.progress(p)
 
-                    with logs_expander:
-                        logs = status_resp.get("logs") or status_resp.get("events") or status_resp.get("steps")
-                        if logs is not None:
-                            st.json(logs)
-                        else:
-                            st.json(status_resp)
-
                     if _is_done(status_resp):
                         break
             except Exception as e:  # noqa: BLE001
@@ -514,14 +546,7 @@ def render() -> None:
         # 1) Always show the final pipeline from Postgres if available.
         if use_db and last_events:
             st.subheader("Processing timeline")
-            latest: Dict[str, Dict[str, Any]] = {}
-            order: List[str] = []
-            for ev in last_events:
-                step = _infer_step_name(ev)
-                if step not in latest:
-                    order.append(step)
-                latest[step] = ev
-            _render_pipeline([(s, latest[s]) for s in order])
+            _render_pipeline_table(last_events)
 
         # 2) Show the final response from n8n (human readable), then raw payload for debugging.
         final_payload = _unwrap_final_upload_payload(upload_resp if isinstance(upload_resp, dict) else {})
