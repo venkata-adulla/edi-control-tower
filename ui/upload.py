@@ -482,10 +482,6 @@ def render() -> None:
         )
 
         st.success("Upload accepted by n8n")
-        with st.expander("Upload response", expanded=False):
-            _render_human_readable_result(_unwrap_final_upload_payload(upload_resp))
-            with st.expander("Upload response (raw)", expanded=False):
-                st.json(upload_resp)
 
         # If the webhook already returned a final result, show it immediately.
         if upload_resp.get("result") is not None and not poll_url and not job_id:
@@ -494,7 +490,6 @@ def render() -> None:
             return
 
         status_placeholder = st.empty()
-        progress_bar = st.progress(0)
 
         started = time.time()
         last_status: Dict[str, Any] = {}
@@ -521,38 +516,8 @@ def render() -> None:
                     last_events = events
                     events_sorted = events  # already ordered by event_time asc
                     # Do not render live updates here; only show timeline at the end.
-                    status_placeholder.info("Processing…")
 
-                    # Progress: use latest numeric progress if present; else derive from ok/fail steps.
-                    p = None
                     last_event = events_sorted[-1] if events_sorted else {}
-                    if isinstance(last_event, dict):
-                        raw_p = last_event.get("progress")
-                        if isinstance(raw_p, (int, float)):
-                            p = raw_p / 100.0 if raw_p > 1 else float(raw_p)
-                    if p is None:
-                        # derive based on stage completion ratio
-                        stages = []
-                        seen = set()
-                        for ev in events_sorted:
-                            s = _infer_step_name(ev)
-                            if s in seen:
-                                continue
-                            seen.add(s)
-                            stages.append(s)
-                        if stages:
-                            ok = 0
-                            # Compute completion ratio from last status per stage.
-                            latest_by_stage: Dict[str, Dict[str, Any]] = {}
-                            for ev in events_sorted:
-                                latest_by_stage[_infer_step_name(ev)] = ev
-                            for s in stages:
-                                bucket = _status_bucket(_infer_status(latest_by_stage.get(s, {})))
-                                if bucket == "ok":
-                                    ok += 1
-                            p = ok / max(1, len(stages))
-                    if p is not None:
-                        progress_bar.progress(max(0.0, min(1.0, float(p))))
 
                     # Determine done based on last event status.
                     last_status = last_event if isinstance(last_event, dict) else {}
@@ -577,10 +542,6 @@ def render() -> None:
                     status_text = status_resp.get("status") or status_resp.get("state") or "processing"
                     status_placeholder.info(f"Status: {status_text}")
 
-                    p = _extract_progress(status_resp)
-                    if p is not None:
-                        progress_bar.progress(p)
-
                     if _is_done(status_resp):
                         break
             except Exception as e:  # noqa: BLE001
@@ -590,7 +551,7 @@ def render() -> None:
             time.sleep(float(interval_s))
 
         st.divider()
-        st.subheader("Final automation result")
+        st.subheader("Document Processing Result:")
 
         # 1) Always show the final pipeline from Postgres if available.
         if use_db and last_events:
