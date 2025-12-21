@@ -72,13 +72,26 @@ def _pg_settings() -> Dict[str, Any]:
             secrets = st.secrets  # type: ignore[attr-defined]
         except Exception:  # noqa: BLE001
             secrets = {}
-        # Common patterns: flat keys or a nested "postgres" section.
-        if isinstance(secrets, dict):
-            sv = secrets.get(name)
-            if sv is None and isinstance(secrets.get("postgres"), dict):
-                sv = secrets["postgres"].get(name)
-            if sv is not None and str(sv).strip() != "":
-                return str(sv)
+        # Streamlit Cloud provides a Secrets object (Mapping-like), not a plain dict.
+        # Support both flat keys and a nested "postgres" section.
+        try:
+            sv = secrets.get(name)  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            sv = None
+        if sv is None:
+            try:
+                pg = secrets.get("postgres")  # type: ignore[union-attr]
+            except Exception:  # noqa: BLE001
+                pg = None
+            if hasattr(pg, "get"):
+                try:
+                    sv = pg.get(name)  # type: ignore[union-attr]
+                except Exception:  # noqa: BLE001
+                    sv = None
+            elif isinstance(pg, dict):
+                sv = pg.get(name)
+        if sv is not None and str(sv).strip() != "":
+            return str(sv)
         return default
 
     def _get_any(names: List[str], default: Optional[str] = None) -> Optional[str]:
