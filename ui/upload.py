@@ -383,7 +383,11 @@ def render() -> None:
                 upload_resp = client.file_upload(
                     filename=uploaded.name,
                     content=content,
-                    metadata={"uploaded_at": record["uploaded_at"], "size_bytes": record["size_bytes"]},
+                    metadata={
+                        "filename": uploaded.name,
+                        "uploaded_at": record["uploaded_at"],
+                        "size_bytes": record["size_bytes"],
+                    },
                 )
         except Exception as e:  # noqa: BLE001
             st.error(f"Upload failed: {e}")
