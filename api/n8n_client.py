@@ -13,7 +13,7 @@ class N8NWebhookConfig:
     Configuration for calling n8n webhooks.
 
     Notes:
-    - base_url should be the n8n root URL, e.g. https://venkat-1194.app.n8n.cloud
+    - base_url should be the n8n root URL, e.g. https://n8ndev.nitco.io
     - webhook_* values are paths appended to base_url, e.g. /webhook/chat
     """
 
@@ -29,7 +29,7 @@ class N8NClient:
     """HTTP client for calling n8n webhooks (PoC backend surface).
 
     Environment variables:
-    - N8N_BASE_URL (default: https://venkat-1194.app.n8n.cloud)
+    - N8N_BASE_URL (default: https://n8ndev.nitco.io)
     - N8N_WEBHOOK_CHAT (default: /webhook/chat)
     - N8N_WEBHOOK_UPLOAD (default: /webhook/upload)
     - N8N_WEBHOOK_KPIS (default: /webhook/kpis)
@@ -40,7 +40,7 @@ class N8NClient:
     def __init__(self, config: Optional[N8NWebhookConfig] = None, timeout_s: int = 15):
         if config is None:
             config = N8NWebhookConfig(
-                base_url=(os.getenv("N8N_BASE_URL", "https://venkat-1194.app.n8n.cloud") or "").rstrip("/"),
+                base_url=(os.getenv("N8N_BASE_URL", "https://n8ndev.nitco.io") or "").rstrip("/"),
                 webhook_chat=os.getenv("N8N_WEBHOOK_CHAT", "/webhook/chat"),
                 webhook_upload=os.getenv("N8N_WEBHOOK_UPLOAD", "/webhook/upload"),
                 webhook_kpis=os.getenv("N8N_WEBHOOK_KPIS", "/webhook/kpis"),
