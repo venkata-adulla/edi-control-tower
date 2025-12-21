@@ -447,8 +447,6 @@ def render() -> None:
 
         status_placeholder = st.empty()
         progress_bar = st.progress(0)
-        st.subheader("Live processing")
-        pipeline_placeholder = st.empty()
 
         started = time.time()
         last_status: Dict[str, Any] = {}
@@ -468,16 +466,14 @@ def render() -> None:
 
                     document_id, events = _fetch_events_for_filename(uploaded.name)
                     if not events:
-                        with pipeline_placeholder.container():
-                            st.info("Waiting for document events…")
+                        status_placeholder.info("Waiting for document events…")
                         time.sleep(float(interval_s))
                         continue
 
                     last_events = events
                     events_sorted = events  # already ordered by event_time asc
-                    # Render pipeline as a table, refreshed each poll.
-                    with pipeline_placeholder.container():
-                        _render_pipeline_table(events_sorted)
+                    # Do not render live updates here; only show timeline at the end.
+                    status_placeholder.info("Processing…")
 
                     # Progress: use latest numeric progress if present; else derive from ok/fail steps.
                     p = None
@@ -498,8 +494,12 @@ def render() -> None:
                             stages.append(s)
                         if stages:
                             ok = 0
+                            # Compute completion ratio from last status per stage.
+                            latest_by_stage: Dict[str, Dict[str, Any]] = {}
+                            for ev in events_sorted:
+                                latest_by_stage[_infer_step_name(ev)] = ev
                             for s in stages:
-                                bucket = _status_bucket(_infer_status(latest_by_stage.get(s, {}))) if "latest_by_stage" in locals() else "unknown"
+                                bucket = _status_bucket(_infer_status(latest_by_stage.get(s, {})))
                                 if bucket == "ok":
                                     ok += 1
                             p = ok / max(1, len(stages))
@@ -511,10 +511,17 @@ def render() -> None:
                     if _is_done({"status": _infer_status(last_status)}):
                         break
                 else:
+                    # No Postgres live status. Poll n8n only if a poll URL exists or a status webhook is configured.
+                    webhook_status = getattr(client.config, "webhook_status", None)
                     if poll_url:
                         status_resp = client.call_webhook(poll_url, {"job_id": job_id} if job_id else {})
-                    else:
+                    elif webhook_status:
                         status_resp = client.call_webhook(_status_webhook_url(client), {"job_id": job_id})
+                    else:
+                        status_placeholder.warning(
+                            "Live status polling is unavailable (no Postgres configuration and no n8n status webhook)."
+                        )
+                        break
 
                     last_status = status_resp
                     st.session_state["last_upload_run"].update({"status": "polling", "last_status": status_resp})
