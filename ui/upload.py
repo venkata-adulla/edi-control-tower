@@ -115,6 +115,30 @@ def _fetch_document_id_for_filename(filename: str) -> Optional[Any]:
             return row.get("document_id")
 
 
+def _fetch_events_for_filename(filename: str, limit: int = 500) -> Tuple[Optional[Any], List[Dict[str, Any]]]:
+    """
+    Fetch document_events for a given documents.original_filename.
+    Returns (document_id, events). If document isn't registered yet, returns (None, []).
+    """
+    query = """
+        SELECT de.*, d.document_id
+        FROM documents d
+        JOIN document_events de ON de.document_id = d.document_id
+        WHERE d.original_filename = %s
+        ORDER BY de.event_time ASC
+        LIMIT %s
+    """
+    with _pg_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (filename, limit))
+            rows = cur.fetchall() or []
+            if not rows:
+                # Might not be registered yet, or no events yet.
+                return (None, [])
+            doc_id = rows[0].get("document_id")
+            return (doc_id, [dict(r) for r in rows])
+
+
 def _fetch_document_events(document_id: Any, limit: int = 500) -> List[Dict[str, Any]]:
     """
     Fetch events for a document_id from document_events.
@@ -205,6 +229,61 @@ def _render_pipeline(latest_by_step: List[Tuple[str, Dict[str, Any]]]) -> None:
             st.write("│")
 
 
+def _unwrap_final_upload_payload(upload_resp: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Try to normalize n8n upload responses into a dict we can render.
+    Common patterns:
+    - {"result": {...}}
+    - {"output": "..."} or {"summary": "..."}
+    - {"data": [...]} (wrapped)
+    """
+    if not isinstance(upload_resp, dict):
+        return {}
+    if isinstance(upload_resp.get("result"), dict):
+        return upload_resp["result"]
+    if "data" in upload_resp:
+        data = upload_resp.get("data")
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            # n8n sometimes wraps items as {"json": {...}}
+            if "json" in data[0] and isinstance(data[0].get("json"), dict):
+                return data[0]["json"]
+            return data[0]
+    return upload_resp
+
+
+def _render_human_readable_result(payload: Dict[str, Any]) -> None:
+    """
+    Render a human-readable summary for common n8n workflow outputs.
+    """
+    summary = payload.get("Summary") or payload.get("summary") or payload.get("output") or payload.get("text")
+    findings = payload.get("findings")
+    details = payload.get("details")
+
+    if isinstance(summary, str) and summary.strip():
+        st.subheader("Summary")
+        st.write(summary.strip())
+
+    if isinstance(findings, list) and findings:
+        st.subheader("Findings")
+        for f in findings:
+            if isinstance(f, str) and f.strip():
+                st.write(f"- {f.strip()}")
+            else:
+                st.write(f"- {f}")
+
+    if isinstance(details, list) and details:
+        st.subheader("Details")
+        st.dataframe(details, use_container_width=True, hide_index=True)
+
+    if not any([summary, findings, details]):
+        # Fallback to showing key/value fields at least.
+        st.subheader("Result")
+        for k, v in payload.items():
+            if isinstance(v, (dict, list)):
+                continue
+            st.write(f"**{k}**: {v}")
+
+
 def render() -> None:
     st.title("File upload")
 
@@ -292,10 +371,13 @@ def render() -> None:
         status_placeholder = st.empty()
         progress_bar = st.progress(0)
         logs_expander = st.expander("Processing updates", expanded=True)
+        with logs_expander:
+            pipeline_placeholder = st.empty()
 
         started = time.time()
         last_status: Dict[str, Any] = {}
         document_id: Optional[Any] = None
+        last_events: List[Dict[str, Any]] = []
 
         while True:
             if time.time() - started > float(max_wait_s):
@@ -304,17 +386,20 @@ def render() -> None:
 
             try:
                 if use_db:
-                    # Resolve document_id from filename (documents table) once it exists.
-                    if document_id is None:
-                        document_id = _fetch_document_id_for_filename(uploaded.name)
-                        if document_id is None:
-                            status_placeholder.info("Status: waiting for document registration…")
-                            time.sleep(float(interval_s))
-                            continue
+                    # Poll document_events joined via documents.original_filename.
+                    if not _pg_is_configured():
+                        raise ValueError("Postgres not configured for live updates")
 
-                    events = _fetch_document_events(document_id)
-                    # Sort by time if possible, then compute latest per step.
-                    events_sorted = sorted(events, key=_event_time_key)
+                    document_id, events = _fetch_events_for_filename(uploaded.name)
+                    if not events:
+                        status_placeholder.info("Status: waiting for document events…")
+                        with pipeline_placeholder.container():
+                            st.caption("No events yet (waiting for document registration / first workflow step).")
+                        time.sleep(float(interval_s))
+                        continue
+
+                    last_events = events
+                    events_sorted = events  # already ordered by event_time asc
                     latest: Dict[str, Dict[str, Any]] = {}
                     order: List[str] = []
                     for ev in events_sorted:
@@ -323,9 +408,9 @@ def render() -> None:
                             order.append(step)
                         latest[step] = ev
 
-                    # Render pipeline (vertical).
-                    status_placeholder.info(f"Status: tracking document_id={document_id}")
-                    with logs_expander:
+                    # Render pipeline (vertical), refreshed each poll.
+                    status_placeholder.info(f"Status: tracking document_id={document_id or '—'}")
+                    with pipeline_placeholder.container():
                         _render_pipeline([(s, latest[s]) for s in order])
 
                     # Progress: use latest numeric progress if present; else derive from ok/fail steps.
@@ -378,11 +463,24 @@ def render() -> None:
 
         st.divider()
         st.subheader("Final automation result")
-        final_result = last_status.get("result") if isinstance(last_status, dict) else None
-        if final_result is not None:
-            st.json(final_result)
-        else:
-            st.json(last_status)
+
+        # 1) Always show the final pipeline from Postgres if available.
+        if use_db and last_events:
+            st.subheader("Processing timeline")
+            latest: Dict[str, Dict[str, Any]] = {}
+            order: List[str] = []
+            for ev in last_events:
+                step = _infer_step_name(ev)
+                if step not in latest:
+                    order.append(step)
+                latest[step] = ev
+            _render_pipeline([(s, latest[s]) for s in order])
+
+        # 2) Show the final response from n8n (human readable), then raw payload for debugging.
+        final_payload = _unwrap_final_upload_payload(upload_resp if isinstance(upload_resp, dict) else {})
+        _render_human_readable_result(final_payload)
+        with st.expander("Final response (raw)", expanded=False):
+            st.json(upload_resp)
 
     # Show the last run (if any) for context after reruns.
     last_run = st.session_state.get("last_upload_run")
