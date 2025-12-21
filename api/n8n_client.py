@@ -75,7 +75,18 @@ class N8NClient:
         *,
         files: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        resp = self._session.post(url, json=payload, files=files, timeout=self.timeout_s)
+        # If files are present, we must use multipart/form-data. In that case, `json=...`
+        # is ignored by requests, so we send the payload as regular form fields instead.
+        if files:
+            form: Dict[str, str] = {}
+            if payload:
+                for k, v in payload.items():
+                    if v is None:
+                        continue
+                    form[str(k)] = str(v)
+            resp = self._session.post(url, data=form, files=files, timeout=self.timeout_s)
+        else:
+            resp = self._session.post(url, json=payload, timeout=self.timeout_s)
         resp.raise_for_status()
         return self._json_or_text(resp)
 
@@ -106,7 +117,10 @@ class N8NClient:
         """
         url = self._abs_url(self.config.webhook_upload)
         if as_multipart:
-            files = {"file": (filename, content)}
+            # n8n Webhook node commonly expects the binary property name `data`
+            # (but many workflows use `file`). Send both to be compatible.
+            file_part = (filename, content, "application/octet-stream")
+            files = {"file": file_part, "data": file_part}
             payload = dict(metadata or {})
             return self._post_json(url, payload, files=files)
         payload = {"filename": filename, "content": content.decode("utf-8", errors="replace")}
