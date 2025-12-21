@@ -393,17 +393,11 @@ def render() -> None:
     st.json(record)
 
     st.divider()
-    st.subheader("Automation run")
-
-    col1, col2 = st.columns([1, 1])
-    max_wait_s = col1.number_input("Max wait (seconds)", min_value=10, max_value=600, value=90, step=10)
-    interval_s = col2.number_input("Poll interval (seconds)", min_value=1, max_value=30, value=3, step=1)
-    use_db = st.toggle(
-        "Show live status from Postgres (document_events)",
-        value=_pg_is_configured(),
-        disabled=not _pg_is_configured(),
-        help="Uses documents.original_filename → documents.document_id → document_events for live status.",
-    )
+    # Polling configuration (kept intentionally out of the UI)
+    max_wait_s = 90
+    interval_s = 3
+    # Prefer Postgres live status when configured; otherwise fall back to n8n status polling.
+    use_db = _pg_is_configured()
 
     if st.button("Send to n8n and process", type="primary"):
         client = N8NClient()
